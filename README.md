@@ -118,8 +118,9 @@ Pkg.test()
 ## Releases
 
 - `v0.1.0`: Initial release.
-- `v0.1.1`: Allow sampling within exchange blocks (divisibility conditions are
-  no longer required).
+- `v0.1.1`: Allow sampling within exchange blocks (`sample_every` and
+  `partition_every` no longer need to be divisible by `swap_every` during
+  production sampling).
 
 ## License
 

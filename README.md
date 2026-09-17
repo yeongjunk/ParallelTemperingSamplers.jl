@@ -86,8 +86,9 @@ The main driver functions are:
   sampling. Construct `sampling_params` with `SamplingParams(n_sweeps,
   sample_every, partition_every, beta_indices)`.
 
-The sweep and partition intervals must be divisible by `swap_every`. For
-sampling, `sample_every` must also be divisible by `swap_every`.
+During production sampling, sampling, partitioning, and replica exchanges may
+use independent intervals. Local updates are grouped into blocks ending at the
+next scheduled event.
 
 ## Example
 

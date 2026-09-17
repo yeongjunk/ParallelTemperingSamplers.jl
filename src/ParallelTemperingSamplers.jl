@@ -450,15 +450,9 @@ function sample_replicas!(reps::AbstractReplicas, sampling_params::SamplingParam
     exchange_params.swap_every > 0 || error("swap_every must be positive.")
     check_edge_groups(exchange_params.edge_groups, K)
 
-    # Consistency checks required by block-wise execution
-    sampling_params.n_sweeps % exchange_params.swap_every == 0 || error("n_sweeps must be divisible by swap_every.")
-    sampling_params.partition_every % exchange_params.swap_every == 0 || error("partition_every must be divisible by swap_every.")
-    sampling_params.sample_every % exchange_params.swap_every == 0 || error("sample_every must be divisible by swap_every for block optimization.")
-
     sample_indices = sampling_params.beta_indices
     all(k -> 1 <= k <= K, sample_indices) || error("beta_indices out of range.")
 
-    n_blocks = sampling_params.n_sweeps ÷ exchange_params.swap_every
     n_samples = sampling_params.n_sweeps ÷ sampling_params.sample_every
     n_partitions = sampling_params.n_sweeps ÷ sampling_params.partition_every
     n_slots = length(sample_indices)
@@ -480,17 +474,28 @@ function sample_replicas!(reps::AbstractReplicas, sampling_params::SamplingParam
     swap_every = exchange_params.swap_every
     edge_groups = exchange_params.edge_groups
 
-    for block in 1:n_blocks
-        # 1. Local updates in one block
-        accepted = steps!(reps, swap_every)
-        update_acceptance!(acceptance_status, accepted, swap_every)
+    sweep = 0
+    swap_round = 0
+
+    while sweep < sampling_params.n_sweeps
+        block_size = min(
+            swap_every - sweep % swap_every,
+            sampling_params.sample_every - sweep % sampling_params.sample_every,
+            sampling_params.partition_every - sweep % sampling_params.partition_every,
+            sampling_params.n_sweeps - sweep,
+        )
+
+        # 1. Local updates up to the next swap, sample, or partition boundary
+        accepted = steps!(reps, block_size)
+        update_acceptance!(acceptance_status, accepted, block_size)
+        sweep += block_size
 
         # 2. Replica exchanges
-        g = mod1(block, length(edge_groups))
-        replica_exchanges!(reps, edge_groups[g], exchange_status.n_attempts[g], exchange_status.n_accepts[g]; rng=rng)
-
-        # Total number of completed sweeps
-        sweep = block * swap_every
+        if sweep % swap_every == 0
+            swap_round += 1
+            g = mod1(swap_round, length(edge_groups))
+            replica_exchanges!(reps, edge_groups[g], exchange_status.n_attempts[g], exchange_status.n_accepts[g]; rng=rng)
+        end
 
         # 3. Sampling
         if sweep % sampling_params.sample_every == 0

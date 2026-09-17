@@ -133,3 +133,23 @@ end
         result.exchange_history,
     )
 end
+
+@testset "Sampling within a swap block" begin
+    betas = [0.5, 1.0, 2.0, 4.0]
+    reps = GaussianReplicas(betas)
+
+    exchange_params = ExchangeParams([[(1, 2), (3, 4)]], 100)
+    sampling_params = SamplingParams(100, 10, 100, [length(betas)])
+
+    result = sample_replicas!(
+        reps,
+        sampling_params,
+        exchange_params;
+        rng=Xoshiro(5678),
+        sample_eltype=Float64,
+    )
+
+    @test size(result.samples) == (1, 1, 10)
+    @test all(isfinite, result.samples)
+    @test sum(result.exchange_history[1].n_attempts[1]) == 2
+end

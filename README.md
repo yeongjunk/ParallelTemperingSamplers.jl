@@ -115,6 +115,12 @@ using Pkg
 Pkg.test()
 ```
 
+## Releases
+
+- `v0.1.0`: Initial release.
+- `v0.1.1`: Allow sampling within exchange blocks (divisibility conditions are
+  no longer required).
+
 ## License
 
 ParallelTemperingSamplers.jl is released under the [MIT License](LICENSE).

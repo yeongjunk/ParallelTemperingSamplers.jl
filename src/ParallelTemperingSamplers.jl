@@ -314,6 +314,16 @@ function replica_sweep!(reps::AbstractReplicas, n_steps::Int, acceptance_status:
     return nothing
 end
 
+function next_event_block_size(sweep::Int, n_sweeps::Int, intervals)
+    block_size = n_sweeps - sweep
+
+    for interval in intervals
+        block_size = min(block_size, interval - sweep % interval)
+    end
+
+    return block_size
+end
+
 """
     equilibrate!(reps, eq_params; ex_params, rng=Random.GLOBAL_RNG)
 
@@ -329,25 +339,30 @@ function equilibrate!(reps::AbstractReplicas, eq_params::EquilibrationParams; ex
     ex_params.swap_every > 0 || error("swap_every must be positive.")
     check_edge_groups(ex_params.edge_groups, K)
 
-    eq_params.n_sweeps % ex_params.swap_every == 0 || error("n_sweeps must be divisible by swap_every.")
-
     stats = EquilibrationStats(ex_params, K)
-    n_blocks = eq_params.n_sweeps ÷ ex_params.swap_every
+    sweep = 0
+    swap_round = 0
+    swap_every = ex_params.swap_every
 
-    for block in 1:n_blocks
-        accepted = steps!(reps, ex_params.swap_every)
-        update_acceptance!(stats.acceptance, accepted, ex_params.swap_every)
+    while sweep < eq_params.n_sweeps
+        block_size = next_event_block_size(sweep, eq_params.n_sweeps, (swap_every,))
+        accepted = steps!(reps, block_size)
+        update_acceptance!(stats.acceptance, accepted, block_size)
+        sweep += block_size
 
-        g = mod1(block, length(ex_params.edge_groups))
-        replica_exchanges!(
-            reps,
-            ex_params.edge_groups[g],
-            stats.exchange.n_attempts[g],
-            stats.exchange.n_accepts[g];
-            rng=rng,
-        )
+        if sweep % swap_every == 0
+            swap_round += 1
+            g = mod1(swap_round, length(ex_params.edge_groups))
+            replica_exchanges!(
+                reps,
+                ex_params.edge_groups[g],
+                stats.exchange.n_attempts[g],
+                stats.exchange.n_accepts[g];
+                rng=rng,
+            )
 
-        update_walker_status!(stats.walker, getwalkerids(reps))
+            update_walker_status!(stats.walker, getwalkerids(reps))
+        end
     end
 
     return (exchange=stats.exchange, acceptance=stats.acceptance)
@@ -367,11 +382,6 @@ function monitor_equilibration!(reps::AbstractReplicas, eq_params::Equilibration
     ex_params.swap_every > 0 || error("swap_every must be positive.")
     check_edge_groups(ex_params.edge_groups, K)
     
-    eq_params.n_sweeps % ex_params.swap_every == 0 || error("n_sweeps must be divisible by swap_every.")
-    
-    eq_params.partition_every % ex_params.swap_every == 0 || error("partition_every must be divisible by swap_every.")
-
-    n_blocks = eq_params.n_sweeps ÷ ex_params.swap_every
     n_partitions = eq_params.n_sweeps ÷ eq_params.partition_every
 
 
@@ -388,16 +398,25 @@ function monitor_equilibration!(reps::AbstractReplicas, eq_params::Equilibration
     swap_every = ex_params.swap_every
     edge_groups= ex_params.edge_groups
 
-    for block in 1:n_blocks
-        accepted = steps!(reps, swap_every)
-        update_acceptance!(acceptance_status, accepted, swap_every)
+    sweep = 0
+    swap_round = 0
 
-        g = mod1(block, length(ex_params.edge_groups))
-        replica_exchanges!(reps, edge_groups[g], exchange_status.n_attempts[g], exchange_status.n_accepts[g]; rng=rng)
+    while sweep < eq_params.n_sweeps
+        block_size = next_event_block_size(
+            sweep,
+            eq_params.n_sweeps,
+            (swap_every, eq_params.partition_every),
+        )
+        accepted = steps!(reps, block_size)
+        update_acceptance!(acceptance_status, accepted, block_size)
+        sweep += block_size
 
-        update_walker_status!(walker_status, getwalkerids(reps))
-
-        sweep = block * ex_params.swap_every
+        if sweep % swap_every == 0
+            swap_round += 1
+            g = mod1(swap_round, length(edge_groups))
+            replica_exchanges!(reps, edge_groups[g], exchange_status.n_attempts[g], exchange_status.n_accepts[g]; rng=rng)
+            update_walker_status!(walker_status, getwalkerids(reps))
+        end
 
         if sweep % eq_params.partition_every == 0
             partition += 1
@@ -478,11 +497,14 @@ function sample_replicas!(reps::AbstractReplicas, sampling_params::SamplingParam
     swap_round = 0
 
     while sweep < sampling_params.n_sweeps
-        block_size = min(
-            swap_every - sweep % swap_every,
-            sampling_params.sample_every - sweep % sampling_params.sample_every,
-            sampling_params.partition_every - sweep % sampling_params.partition_every,
-            sampling_params.n_sweeps - sweep,
+        block_size = next_event_block_size(
+            sweep,
+            sampling_params.n_sweeps,
+            (
+                swap_every,
+                sampling_params.sample_every,
+                sampling_params.partition_every,
+            ),
         )
 
         # 1. Local updates up to the next swap, sample, or partition boundary

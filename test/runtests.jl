@@ -153,3 +153,33 @@ end
     @test all(isfinite, result.samples)
     @test sum(result.exchange_history[1].n_attempts[1]) == 2
 end
+
+@testset "Equilibration event blocks" begin
+    betas = [0.5, 1.0, 2.0, 4.0]
+    exchange_params = ExchangeParams([[(1, 2), (3, 4)]], 100)
+    equilibration_params = EquilibrationParams(105, 10)
+
+    reps = GaussianReplicas(betas)
+    result = equilibrate!(
+        reps,
+        equilibration_params;
+        ex_params=exchange_params,
+        rng=Xoshiro(5678),
+    )
+
+    @test result.acceptance.n_attempts == 105
+    @test sum(result.exchange.n_attempts[1]) == 2
+
+    reps = GaussianReplicas(betas)
+    result = monitor_equilibration!(
+        reps,
+        equilibration_params,
+        exchange_params;
+        rng=Xoshiro(5678),
+    )
+
+    @test size(result.energies) == (length(betas), 10)
+    @test all(isfinite, result.energies)
+    @test all(status -> status.n_attempts == 10, result.acceptance)
+    @test sum(status -> sum(sum, status.n_attempts), result.exchange) == 2
+end

@@ -86,9 +86,9 @@ The main driver functions are:
   sampling. Construct `sampling_params` with `SamplingParams(n_sweeps,
   sample_every, partition_every, beta_indices)`.
 
-During production sampling, sampling, partitioning, and replica exchanges may
-use independent intervals. Local updates are grouped into blocks ending at the
-next scheduled event.
+Equilibration, sampling, partitioning, and replica exchanges may use
+independent intervals. Local updates are grouped into blocks ending at the next
+scheduled event.
 
 ## Example
 
@@ -118,9 +118,8 @@ Pkg.test()
 ## Releases
 
 - `v0.1.0`: Initial release.
-- `v0.1.1`: Allow sampling within exchange blocks (`sample_every` and
-  `partition_every` no longer need to be divisible by `swap_every` during
-  production sampling).
+- `v0.1.1`: Allow sampling and equilibration diagnostics within exchange blocks
+  (divisibility conditions between event intervals are no longer required).
 
 ## License
 
